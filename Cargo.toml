@@ -1,0 +1,26 @@
+[package]
+name = "stegrdb-relay-postgres"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+async-trait = "0.1"
+bytes = "1"
+deadpool-postgres = "0.14"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+rustls-native-certs = "0.8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+stegrdb-relay = { git = "https://github.com/aida0710/stegrdb", rev = "e1ca4e0298cd7e27279b9b4e9ddd82e5b0ee2bc9" }
+stegrdb-plugin-sdk = { git = "https://github.com/aida0710/stegrdb", rev = "e1ca4e0298cd7e27279b9b4e9ddd82e5b0ee2bc9" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
+tokio-postgres = { version = "0.7", features = ["with-uuid-1"] }
+tokio-postgres-rustls = { version = "0.14", default-features = false, features = ["ring"] }
+uuid = "1"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+
+[[bin]]
+name = "stegrdb-plugin-postgres"
+path = "src/main.rs"

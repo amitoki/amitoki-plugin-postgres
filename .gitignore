@@ -1,0 +1,8 @@
+/target/
+/dist/
+.env*
+*.der
+*.pem
+node_modules/
+.next/
+*.log
