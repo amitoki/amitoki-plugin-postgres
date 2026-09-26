@@ -18,5 +18,5 @@ done
 docker exec "$container" pg_isready --host 127.0.0.1 --username postgres >/dev/null
 docker exec -i "$container" psql --username postgres --set ON_ERROR_STOP=1 < schema.sql
 port=$(docker port "$container" 5432/tcp | cut -d: -f2)
-export STEGRDB_TEST_POSTGRES_URL="host=127.0.0.1 port=$port user=postgres dbname=postgres sslmode=disable"
+export AMITOKI_TEST_POSTGRES_URL="host=127.0.0.1 port=$port user=postgres dbname=postgres sslmode=disable"
 cargo test --test delivery --locked -- --ignored --nocapture

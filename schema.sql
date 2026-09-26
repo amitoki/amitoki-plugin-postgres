@@ -1,4 +1,5 @@
 -- 旧packets/node_list/firewall_settingsには触れない、中継専用のスキーマ。
+-- 既存の未ACKキューを引き継ぐためスキーマ名を維持する。
 CREATE SCHEMA IF NOT EXISTS stegrdb_relay;
 
 CREATE TABLE IF NOT EXISTS stegrdb_relay.nodes (

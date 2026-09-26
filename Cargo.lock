@@ -26,6 +26,52 @@ dependencies = [
 ]
 
 [[package]]
+name = "amitoki-plugin-sdk"
+version = "0.1.0"
+source = "git+https://github.com/amitoki/amitoki?rev=a5b72966af1dcd64971ef46b2748e2e1df18cbac#a5b72966af1dcd64971ef46b2748e2e1df18cbac"
+dependencies = [
+ "amitoki-relay",
+ "async-trait",
+ "jsonschema",
+ "rmp-serde",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "amitoki-relay"
+version = "0.1.0"
+source = "git+https://github.com/amitoki/amitoki?rev=a5b72966af1dcd64971ef46b2748e2e1df18cbac#a5b72966af1dcd64971ef46b2748e2e1df18cbac"
+dependencies = [
+ "async-trait",
+ "bytes",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "uuid",
+]
+
+[[package]]
+name = "amitoki-relay-postgres"
+version = "0.1.2"
+dependencies = [
+ "amitoki-plugin-sdk",
+ "amitoki-relay",
+ "async-trait",
+ "bytes",
+ "deadpool-postgres",
+ "rustls",
+ "rustls-native-certs",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-postgres",
+ "tokio-postgres-rustls",
+ "uuid",
+]
+
+[[package]]
 name = "async-trait"
 version = "0.1.92"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1227,52 +1273,6 @@ name = "stable_deref_trait"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
-
-[[package]]
-name = "stegrdb-plugin-sdk"
-version = "0.1.0"
-source = "git+https://github.com/aida0710/stegrdb?rev=e1ca4e0298cd7e27279b9b4e9ddd82e5b0ee2bc9#e1ca4e0298cd7e27279b9b4e9ddd82e5b0ee2bc9"
-dependencies = [
- "async-trait",
- "jsonschema",
- "rmp-serde",
- "serde",
- "serde_json",
- "stegrdb-relay",
- "tokio",
-]
-
-[[package]]
-name = "stegrdb-relay"
-version = "0.1.0"
-source = "git+https://github.com/aida0710/stegrdb?rev=e1ca4e0298cd7e27279b9b4e9ddd82e5b0ee2bc9#e1ca4e0298cd7e27279b9b4e9ddd82e5b0ee2bc9"
-dependencies = [
- "async-trait",
- "bytes",
- "serde",
- "serde_json",
- "thiserror",
- "uuid",
-]
-
-[[package]]
-name = "stegrdb-relay-postgres"
-version = "0.1.1"
-dependencies = [
- "async-trait",
- "bytes",
- "deadpool-postgres",
- "rustls",
- "rustls-native-certs",
- "serde",
- "serde_json",
- "stegrdb-plugin-sdk",
- "stegrdb-relay",
- "tokio",
- "tokio-postgres",
- "tokio-postgres-rustls",
- "uuid",
-]
 
 [[package]]
 name = "stringprep"

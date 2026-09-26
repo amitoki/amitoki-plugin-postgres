@@ -1,18 +1,18 @@
-# stegrdb-plugin-postgres
+# amitoki-plugin-postgres
 
-PostgreSQLを使うstegrdbの外部プロセス型プラグイン。本体の再ビルドなしに追加・更新できる。共通SDKは公開リポジトリのrevisionへ固定しているため、このリポジトリだけでビルドできる。
+PostgreSQLを使うamitokiの外部プロセス型プラグイン。本体の再ビルドなしに追加・更新できる。共通SDKは公開リポジトリのrevisionへ固定しているため、このリポジトリだけでビルドできる。
 
 ## 利用する
 
-stegrdb 0.3以降で実行する。privateリポジトリなので、GitHubのContents読み取り権限があるトークンを`STEGRDB_GITHUB_TOKEN`へ設定する。
+amitoki 0.3以降を使う。公開リポジトリなので、公式配布物の取得にGitHubトークンは不要。
 
 ```bash
-stegrdb plugin add postgres
-stegrdb plugin configure postgres --set connection_env=STEGRDB_POSTGRES_URL --set max_connections=4
-stegrdb plugin validate postgres
-read -r -s -p 'PostgreSQL接続文字列: ' STEGRDB_POSTGRES_URL
+amitoki plugin add postgres
+amitoki plugin configure postgres --set connection_env=AMITOKI_POSTGRES_URL --set max_connections=4
+amitoki plugin validate postgres
+read -r -s -p 'PostgreSQL接続文字列: ' AMITOKI_POSTGRES_URL
 printf '\n'
-export STEGRDB_POSTGRES_URL
+export AMITOKI_POSTGRES_URL
 ```
 
 接続文字列には`host=... port=5432 user=... dbname=... sslmode=require`と認証情報を入力する。TLSはOSの信頼ストアで証明書・ホスト名を検証する。平文接続を許可するのは`sslmode=disable`を明示した場合だけ。
@@ -20,17 +20,17 @@ export STEGRDB_POSTGRES_URL
 初回は同梱の`schema.sql`をDBに適用する。Ubuntu/Debianでは`sudo apt-get install -y postgresql-client`でpsqlを導入できる。Gitを使わずにインストールした場合も、実行ファイルからSQLを取り出せる。
 
 ```bash
-~/.local/share/stegrdb/plugins/postgres/stegrdb-plugin-postgres --schema > schema.sql
-psql "$STEGRDB_POSTGRES_URL" --set ON_ERROR_STOP=1 -f schema.sql
+~/.local/share/amitoki/plugins/postgres/amitoki-plugin-postgres --schema > schema.sql
+psql "$AMITOKI_POSTGRES_URL" --set ON_ERROR_STOP=1 -f schema.sql
 ```
 
-`STEGRDB_PLUGIN_DIR`や`XDG_DATA_HOME`を指定した場合は、そのインストール先の実行ファイルを使う。初期化にはスキーマを作成できるDB権限が必要。stegrdb側の設定は次のとおり。
+`AMITOKI_PLUGIN_DIR`や`XDG_DATA_HOME`を指定した場合は、そのインストール先の実行ファイルを使う。初期化にはスキーマを作成できるDB権限が必要。amitoki側の設定は次のとおり。
 
 ```toml
 [relay]
 plugin = "postgres"
 [relay.options]
-connection_env = "STEGRDB_POSTGRES_URL"
+connection_env = "AMITOKI_POSTGRES_URL"
 max_connections = 4
 replay_window_ms = 4000
 ```
@@ -60,4 +60,10 @@ cargo build --release --locked
 
 Dockerを実行できるユーザで試験する。DB試験は一時コンテナを終了時に削除する。公開SDKのGit revisionとCargo.lockを固定している。
 
-配布物は本体の`scripts/package-plugin.py target/release/stegrdb-plugin-postgres dist`で生成する。CIも同じスクリプトを使用する。Linux x86_64向けの初回配布はUbuntu 24.04でビルド・試験した。
+配布物は本体の`scripts/package-plugin.py target/release/amitoki-plugin-postgres dist`で生成する。CIも同じスクリプトを使用する。Linux x86_64向けの初回配布はUbuntu 24.04でビルド・試験した。
+
+## stegrdb版から移行する
+
+旧タグとリリースは保持している。amitoki版は実行ファイル・crate・環境変数の接頭辞をamitokiへ変更した。本体の[移行手順](https://github.com/amitoki/amitoki/blob/main/docs/amitoki-migration.md)に従って設定とプラグインを配置する。
+
+DBスキーマ名は`stegrdb_relay`を維持し、既存の未ACKキューを引き継ぐ。既存接続変数を使う場合は`connection_env`へ元の環境変数名を明示する。

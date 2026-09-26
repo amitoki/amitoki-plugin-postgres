@@ -17,12 +17,12 @@ jobs:
       - run: cargo build --release --locked
       - uses: actions/checkout@v4
         with:
-          repository: aida0710/stegrdb
-          ref: c572cc343d39256b473b223bf141feff5d648689
+          repository: amitoki/amitoki
+          ref: a5b72966af1dcd64971ef46b2748e2e1df18cbac
           path: .packaging
           persist-credentials: false
-      - run: python3 .packaging/scripts/package-plugin.py target/release/stegrdb-plugin-postgres dist
+      - run: python3 .packaging/scripts/package-plugin.py target/release/amitoki-plugin-postgres dist
       - uses: actions/upload-artifact@v4
         with:
-          name: stegrdb-plugin-postgres-x86_64-linux
+          name: amitoki-plugin-postgres-x86_64-linux
           path: dist/

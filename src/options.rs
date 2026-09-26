@@ -1,6 +1,6 @@
+use amitoki_relay::RelayError;
 use serde::Deserialize;
 use std::time::Duration;
-use stegrdb_relay::RelayError;
 use tokio_postgres::{config::SslMode, Config};
 
 // 送受信を並行処理でき、ノード数に比例して接続を増やしすぎない規定値。
@@ -22,7 +22,7 @@ pub(crate) struct Options {
 impl Default for Options {
     fn default() -> Self {
         Self {
-            connection_env: "STEGRDB_POSTGRES_URL".into(),
+            connection_env: "AMITOKI_POSTGRES_URL".into(),
             max_connections: DEFAULT_CONNECTIONS,
             replay_window_ms: DEFAULT_REPLAY_WINDOW_MS,
         }

@@ -3,6 +3,7 @@ mod options;
 mod queries;
 mod session;
 
+use amitoki_relay::{Delivery, Frame, Receipt, Relay, RelayContext, RelayError, RelayPlugin};
 use async_trait::async_trait;
 use bytes::Bytes;
 use deadpool_postgres::{Manager, Pool, PoolError};
@@ -10,7 +11,6 @@ use options::Options;
 use serde_json::Value;
 use session::NodeSession;
 use std::{error::Error, io, sync::Arc};
-use stegrdb_relay::{Delivery, Frame, Receipt, Relay, RelayContext, RelayError, RelayPlugin};
 use tokio_postgres_rustls::MakeRustlsConnect;
 use uuid::Uuid;
 

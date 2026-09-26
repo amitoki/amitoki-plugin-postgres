@@ -1,4 +1,4 @@
-use stegrdb_relay::{RelayContext, RelayError};
+use amitoki_relay::{RelayContext, RelayError};
 use tokio::task::JoinHandle;
 use tokio_postgres::{Client, Config};
 use tokio_postgres_rustls::MakeRustlsConnect;

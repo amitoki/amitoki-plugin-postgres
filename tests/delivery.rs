@@ -1,3 +1,5 @@
+use amitoki_relay::{Frame, Relay, RelayContext, RelayPlugin};
+use amitoki_relay_postgres::PostgresPlugin;
 use bytes::Bytes;
 use serde_json::json;
 use std::{
@@ -5,12 +7,10 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-use stegrdb_relay::{Frame, Relay, RelayContext, RelayPlugin};
-use stegrdb_relay_postgres::PostgresPlugin;
 use tokio_postgres::{Client, NoTls};
 use uuid::Uuid;
 
-const CONNECTION_ENV: &str = "STEGRDB_TEST_POSTGRES_URL";
+const CONNECTION_ENV: &str = "AMITOKI_TEST_POSTGRES_URL";
 const BATCH_SIZE: usize = 128;
 const FRAME_COUNT: usize = 2048;
 
@@ -23,7 +23,7 @@ async fn database() -> (Client, tokio::task::JoinHandle<()>) {
     (client, task)
 }
 
-async fn connect(channel: &str, node: &str) -> Result<Arc<dyn Relay>, stegrdb_relay::RelayError> {
+async fn connect(channel: &str, node: &str) -> Result<Arc<dyn Relay>, amitoki_relay::RelayError> {
     PostgresPlugin
         .connect(
             RelayContext {
