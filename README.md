@@ -60,6 +60,8 @@ cargo build --release --locked
 
 Dockerを実行できるユーザで試験する。DB試験は一時コンテナを終了時に削除する。公開SDKのGit revisionとCargo.lockを固定している。
 
+送信・受信・ACKの性能とSQL実行計画は[コンテナでの検証手順](docs/benchmark.md)で測定する。検証用の一時DBで、ノード数・パケット長・バッチサイズを変えて全フレームを照合する。
+
 配布物は本体の`scripts/package-plugin.py target/release/amitoki-plugin-postgres dist`で生成する。CIも同じスクリプトを使用する。Linux x86_64向けの初回配布はUbuntu 24.04でビルド・試験した。
 
 ## stegrdb版から移行する
