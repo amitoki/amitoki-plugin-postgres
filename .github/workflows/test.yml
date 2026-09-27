@@ -20,6 +20,7 @@ jobs:
       - run: cargo clippy --all-targets --locked -- -D warnings
       - run: cargo test --locked
       - run: bash scripts/test-postgres.sh
+      - run: python3 scripts/bench-postgres.py --plans-only --image "$POSTGRES_IMAGE" --output artifacts/query-plans.json
       - run: cargo build --release --locked
       - uses: actions/checkout@v4
         with:

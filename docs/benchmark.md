@@ -48,7 +48,7 @@ python3 scripts/bench-postgres.py --plans-only \
   --output artifacts/postgres-bench/query-plans.json
 ```
 
-受信SQLは1万件のフレームと128件の未ACKで、統計更新前後の計画を比較する。初回再生SQLは25万件の古い履歴で測定する。`--baseline-queries`には比較元の`src/queries.rs`を指定し、省略時は現行SQLだけを測る。比較元のファイルは`git show <revision>:src/queries.rs > before-queries.rs`で取得できる。配送するUUID・本文・順序の一致も確認する。
+受信SQLは1万件のフレームと128件の未ACKで、統計更新前後の計画を比較する。初期条件では、以前のchannelの統計を残したままデータを入れ替え、新channelの件数が少なく見積もられる状況を再現する。時間の閾値ではなく、履歴を繰り返し全走査していないことを実行計画の実走査件数で検証し、PostgreSQL 16/17/18のCIでも実行する。初回再生SQLは25万件の古い履歴で測定する。`--baseline-queries`には比較元の`src/queries.rs`を指定し、省略時は現行SQLだけを測る。比較元のファイルは`git show <revision>:src/queries.rs > before-queries.rs`で取得できる。配送するUUID・本文・順序の一致も確認する。
 
 `EXPLAIN ANALYZE`の結果には実行時間・走査件数・バッファ参照を保存する。実際の稼働中はパラメータ、prepared statementの計画、データ分布、統計の鮮度で計画が変わるため、この固定データでの結果だけで常時高速化を保証しない。
 

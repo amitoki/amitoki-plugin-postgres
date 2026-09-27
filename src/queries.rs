@@ -14,7 +14,8 @@ FROM inserted JOIN stegrdb_relay.nodes AS nodes ON nodes.channel = inserted.chan
 WHERE nodes.node_id <> $2";
 
 // LIMITを本文JOINより前に適用し、OFFSET 0でLATERALの展開を防ぐ。
-// 統計が古くても、小さな配送バッチのために全channel履歴をJOINしない。
+// channelをInitPlanから渡し、別channelの古い頻度統計で本文が1行と
+// 誤推定されて期間索引を全走査する計画を避ける。UUIDとの主キー参照を優先する。
 pub(crate) const RECEIVE: &str = "
 SELECT frame.id, frame.payload, delivery.position
 FROM (
@@ -24,7 +25,7 @@ FROM (
 ) AS delivery
 CROSS JOIN LATERAL (
     SELECT id, payload FROM stegrdb_relay.frames
-    WHERE channel = $1 AND id = delivery.frame_id
+    WHERE channel = (SELECT $1::text) AND id = delivery.frame_id
     OFFSET 0
 ) AS frame
 ORDER BY delivery.position";
