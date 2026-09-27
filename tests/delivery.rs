@@ -1,43 +1,16 @@
-use amitoki_relay::{Frame, Relay, RelayContext, RelayPlugin};
-use amitoki_relay_postgres::PostgresPlugin;
-use bytes::Bytes;
-use serde_json::json;
+mod common;
+
+use amitoki_relay::Relay;
+use common::{connect, database, frame, remove_channel};
 use std::{
     collections::HashSet,
     sync::Arc,
     time::{Duration, Instant},
 };
-use tokio_postgres::{Client, NoTls};
 use uuid::Uuid;
 
-const CONNECTION_ENV: &str = "AMITOKI_TEST_POSTGRES_URL";
 const BATCH_SIZE: usize = 128;
 const FRAME_COUNT: usize = 2048;
-
-async fn database() -> (Client, tokio::task::JoinHandle<()>) {
-    let connection_string = std::env::var(CONNECTION_ENV).expect("専用のPostgreSQLテスト接続を設定してください");
-    let (client, connection) = tokio_postgres::connect(&connection_string, NoTls).await.expect("テスト用DBへの接続");
-    let task = tokio::spawn(async move {
-        connection.await.expect("テスト用DBの接続維持");
-    });
-    (client, task)
-}
-
-async fn connect(channel: &str, node: &str) -> Result<Arc<dyn Relay>, amitoki_relay::RelayError> {
-    PostgresPlugin
-        .connect(
-            RelayContext {
-                channel: channel.into(),
-                node_id: node.into(),
-            },
-            json!({"connection_env": CONNECTION_ENV}),
-        )
-        .await
-}
-
-fn frame(value: u8) -> Frame {
-    Frame::new(Bytes::from(vec![value; 1024])).unwrap()
-}
 
 async fn drain(relay: &Arc<dyn Relay>) -> HashSet<Uuid> {
     let mut received = HashSet::new();
@@ -155,9 +128,4 @@ async fn concurrent_node_registration_and_publish_do_not_lose_or_duplicate_deliv
     let (client, connection) = database().await;
     remove_channel(&client, &channel).await;
     connection.abort();
-}
-
-async fn remove_channel(client: &Client, channel: &str) {
-    client.execute("DELETE FROM stegrdb_relay.nodes WHERE channel = $1", &[&channel]).await.unwrap();
-    client.execute("DELETE FROM stegrdb_relay.frames WHERE channel = $1", &[&channel]).await.unwrap();
 }

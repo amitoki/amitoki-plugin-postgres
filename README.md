@@ -4,12 +4,12 @@ PostgreSQLを使うamitokiの外部プロセス型プラグイン。本体の再
 
 ## 利用する
 
-amitoki 0.3以降を使う。公開リポジトリなので、公式配布物の取得にGitHubトークンは不要。
+amitoki 0.2以降を使う。公開リポジトリなので、公式配布物の取得にGitHubトークンは不要。
 
 ```bash
-amitoki plugin add postgres
-amitoki plugin configure postgres --set connection_env=AMITOKI_POSTGRES_URL --set max_connections=4
-amitoki plugin validate postgres
+amitoki plugin relay add https://github.com/amitoki/amitoki-plugin-postgres
+amitoki plugin relay configure postgres --set connection_env=AMITOKI_POSTGRES_URL --set max_connections=4
+amitoki plugin relay validate postgres
 read -r -s -p 'PostgreSQL接続文字列: ' AMITOKI_POSTGRES_URL
 printf '\n'
 export AMITOKI_POSTGRES_URL
@@ -35,13 +35,19 @@ max_connections = 4
 replay_window_ms = 4000
 ```
 
-`replay_window_ms`は初回登録前のフレームを何ミリ秒分受け取るか。再起動時は値に関係なく既存の未ACKキューを引き継ぐ。
+`replay_window_ms`は初回登録前のフレームを何ミリ秒分受け取るか。基準は登録ロック取得後の再生SQL開始時刻。0では履歴を取り込まない。再起動時は値に関係なく既存の未ACKキューを引き継ぐ。
 
 ## 配送の扱い
 
-フレームと各ノードの未処理キューを同じトランザクションで保存する。receiveは非破壊で、NICへの注入後にACKする。同じUUIDの再送とACKは冪等。登録・送信の競合はchannel単位のadvisory lockで防ぎ、同一node_idの多重起動は専用DB接続で拒否する。
+フレームと各ノードの未処理キューを同じトランザクションで保存する。receiveは非破壊で、NICへの注入後にACKする。同じUUIDの再送とACKは冪等。送信同士はchannelの共有advisory lockで並行実行し、ノード登録とは排他にする。DBの既定に関係なく登録・送信はREAD COMMITTEDで実行する。同一node_idの多重起動は専用DB接続で拒否する。
 
-NIC注入とACKの間のクラッシュは重複し得る。DBの保存済みデータは再起動後も残るが、収集直後の本体メモリは永続化しない。DBの保存期限・掃除は自動化していない。
+単一バッチ内の入力順を維持する。別の送信が先にcommitすることはあり、全送信元を通じたcommit順は保証しない。重なるUUIDを逆順で送った場合などのDBデッドロックは、再試行可能エラーで返す。本体は同じUUIDのバッチを再送できる。
+
+NIC注入とACKの間のクラッシュは重複し得る。DBの保存済みデータは再起動後も残るが、収集直後の本体メモリは永続化しない。保持期限を設定すると、削除済みUUIDの再送は新規フレームになる。
+
+## 保持期限とDB更新
+
+自動削除は既定で無効。利用する場合は、channel内の全ノードで`retention_ms`を指定する。設定例とDB更新手順は[保持期限と運用](docs/retention.md)を参照。既存DBでは、更新した実行ファイルから取り出した`schema.sql`をプラグインの起動前に再適用する。ノード設定用の列と未ACK確認用の索引を追加し、既存フレーム・未ACKは維持する。
 
 ## 開発・試験
 
@@ -60,7 +66,23 @@ cargo build --release --locked
 
 Dockerを実行できるユーザで試験する。DB試験は一時コンテナを終了時に削除する。公開SDKのGit revisionとCargo.lockを固定している。
 
+送信・受信・ACKの性能とSQL実行計画は[コンテナでの検証手順](docs/benchmark.md)で測定する。検証用の一時DBで、ノード数・パケット長・バッチサイズを変えて全フレームを照合する。
+
 配布物は本体の`scripts/package-plugin.py target/release/amitoki-plugin-postgres dist`で生成する。CIも同じスクリプトを使用する。Linux x86_64向けの初回配布はUbuntu 24.04でビルド・試験した。
+
+## リリースする
+
+`Cargo.toml`と`Cargo.lock`の版を更新し、`docs/releases/v<版>.md`へ更新手順を追加する。mainへマージしてCIが成功したcommitに注釈タグ`v<版>`を付けてpushする。タグのCIがPostgreSQL 16・17・18の試験を完了すると、実行ファイル・manifest・SQLの一致を検証し、SHA256SUMSとともにGitHub Releasesへ公開する。正式公開前にアップロード済み全ファイルのSHA256を照合する。公開済み版を上書きしない。
+
+```bash
+git switch main
+git pull --ff-only
+# 作業ツリーがクリーンで、対象commitのCIが成功していることを確認する。
+git tag -a v0.2.0 -m 'PostgreSQLプラグイン0.2.0を公開'
+git push origin v0.2.0
+```
+
+公開前のdraftで止まった場合は、原因を確認して同じタグのCIを再実行できる。コード修正が必要な場合は新しい版を作り、既存タグは変更しない。
 
 ## stegrdb版から移行する
 
