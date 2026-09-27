@@ -2,6 +2,9 @@ name: Plugin
 on: [push, pull_request]
 permissions:
   contents: read
+concurrency:
+  group: plugin-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 jobs:
   test:
     runs-on: ubuntu-24.04
@@ -13,6 +16,7 @@ jobs:
       POSTGRES_IMAGE: postgres:${{ matrix.postgres }}-alpine
     steps:
       - uses: actions/checkout@v4
+      - run: python3 -m unittest discover -s tests/release -v
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -29,7 +33,29 @@ jobs:
           path: .packaging
           persist-credentials: false
       - run: python3 .packaging/scripts/package-plugin.py target/release/amitoki-plugin-postgres dist
+      - run: cp schema.sql dist/schema.sql
       - uses: actions/upload-artifact@v4
         with:
           name: amitoki-plugin-postgres-x86_64-linux-pg${{ matrix.postgres }}
           path: dist/
+  publish:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          name: amitoki-plugin-postgres-x86_64-linux-pg17
+          path: dist
+      - name: Verify the package and publish the version tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_REPOSITORY: ${{ github.repository }}
+        run: python3 scripts/publish-release.py --directory dist --tag "$RELEASE_TAG" --repository "$RELEASE_REPOSITORY"

@@ -70,6 +70,20 @@ Dockerを実行できるユーザで試験する。DB試験は一時コンテナ
 
 配布物は本体の`scripts/package-plugin.py target/release/amitoki-plugin-postgres dist`で生成する。CIも同じスクリプトを使用する。Linux x86_64向けの初回配布はUbuntu 24.04でビルド・試験した。
 
+## リリースする
+
+`Cargo.toml`と`Cargo.lock`の版を更新し、`docs/releases/v<版>.md`へ更新手順を追加する。mainへマージしてCIが成功したcommitに注釈タグ`v<版>`を付けてpushする。タグのCIがPostgreSQL 16・17・18の試験を完了すると、実行ファイル・manifest・SQLの一致を検証し、SHA256SUMSとともにGitHub Releasesへ公開する。正式公開前にアップロード済み全ファイルのSHA256を照合する。公開済み版を上書きしない。
+
+```bash
+git switch main
+git pull --ff-only
+# 作業ツリーがクリーンで、対象commitのCIが成功していることを確認する。
+git tag -a v0.2.0 -m 'PostgreSQLプラグイン0.2.0を公開'
+git push origin v0.2.0
+```
+
+公開前のdraftで止まった場合は、原因を確認して同じタグのCIを再実行できる。コード修正が必要な場合は新しい版を作り、既存タグは変更しない。
+
 ## stegrdb版から移行する
 
 旧タグとリリースは保持している。amitoki版は実行ファイル・crate・環境変数の接頭辞をamitokiへ変更した。本体の[移行手順](https://github.com/amitoki/amitoki/blob/main/docs/amitoki-migration.md)に従って設定とプラグインを配置する。
