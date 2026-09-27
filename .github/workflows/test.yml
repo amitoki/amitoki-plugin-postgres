@@ -5,6 +5,12 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        postgres: ['16', '17', '18']
+    env:
+      POSTGRES_IMAGE: postgres:${{ matrix.postgres }}-alpine
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -24,5 +30,5 @@ jobs:
       - run: python3 .packaging/scripts/package-plugin.py target/release/amitoki-plugin-postgres dist
       - uses: actions/upload-artifact@v4
         with:
-          name: amitoki-plugin-postgres-x86_64-linux
+          name: amitoki-plugin-postgres-x86_64-linux-pg${{ matrix.postgres }}
           path: dist/

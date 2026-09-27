@@ -23,13 +23,18 @@ struct Settings {
     frame_bytes: usize,
     frames_per_node: usize,
     warmup_frames: usize,
+    duration_seconds: u64,
 }
 
 impl Settings {
     fn from_arguments() -> Result<Self, BenchError> {
-        let values: Vec<usize> = std::env::args().skip(1).map(|value| value.parse()).collect::<Result<_, _>>()?;
+        let mut values: Vec<usize> = std::env::args().skip(1).map(|value| value.parse()).collect::<Result<_, _>>()?;
+        let duration_seconds = if values.len() == 6 { values.pop().unwrap() as u64 } else { 0 };
+        if duration_seconds > 3600 {
+            return Err("耐久試験は最大3600秒です".into());
+        }
         let [nodes, batch_size, frame_bytes, frames_per_node, warmup_frames] = values.as_slice() else {
-            return Err("引数: ノード数 バッチ件数 フレーム長 ノードあたり送信件数 ウォームアップ件数".into());
+            return Err("引数: ノード数 バッチ件数 フレーム長 ノードあたり送信件数 ウォームアップ件数 [耐久試験の秒数]".into());
         };
         if !(2..=8).contains(nodes) || !(1..=128).contains(batch_size) || !(14..=65535).contains(frame_bytes) || !(1..=100_000).contains(frames_per_node) || *warmup_frames > 10_000
         {
@@ -41,6 +46,7 @@ impl Settings {
             frame_bytes: *frame_bytes,
             frames_per_node: *frames_per_node,
             warmup_frames: *warmup_frames,
+            duration_seconds,
         })
     }
 }
@@ -117,7 +123,7 @@ fn expected_frames(packets: &[Vec<Frame>], receiver: usize) -> HashMap<Uuid, Byt
 
 async fn measure(settings: &Settings, channel: &str, client: &Client) -> Result<serde_json::Value, BenchError> {
     let mut relays = Vec::new();
-    let packets: Vec<Vec<Frame>> = (0..settings.nodes).map(|node| frames(settings, node)).collect();
+    let retention_ms: u64 = std::env::var("AMITOKI_BENCH_RETENTION_MS").unwrap_or_else(|_| "0".into()).parse()?;
     for node in 0..settings.nodes {
         relays.push(
             PostgresPlugin
@@ -126,12 +132,46 @@ async fn measure(settings: &Settings, channel: &str, client: &Client) -> Result<
                         channel: channel.into(),
                         node_id: format!("node-{node}"),
                     },
-                    json!({"connection_env": CONNECTION_ENV, "replay_window_ms": 0}),
+                    json!({"connection_env": CONNECTION_ENV, "replay_window_ms": 0, "retention_ms": retention_ms, "cleanup_interval_ms": 100}),
                 )
                 .await?,
         );
     }
     warm_up(&relays, settings, client).await?;
+    if settings.duration_seconds == 0 {
+        return measure_round(settings, &relays).await;
+    }
+    let started = Instant::now();
+    let mut rounds = Vec::new();
+    let mut samples = Vec::new();
+    // 大きな表の件数集計を毎バッチ走らせず、10秒ごとに状態を観測する。
+    let sample_interval = Duration::from_secs(10);
+    let mut next_sample = Duration::ZERO;
+    while started.elapsed() < Duration::from_secs(settings.duration_seconds) {
+        rounds.push(tokio::time::timeout(CASE_DEADLINE, measure_round(settings, &relays)).await??);
+        if started.elapsed() >= next_sample {
+            let row = client.query_one("SELECT (SELECT count(*) FROM stegrdb_relay.frames WHERE channel=$1), (SELECT count(*) FROM stegrdb_relay.pending WHERE channel=$1), pg_total_relation_size('stegrdb_relay.frames')", &[&channel]).await?;
+            let sample = json!({"elapsed_seconds": started.elapsed().as_secs_f64(), "retained_frames": row.get::<_, i64>(0), "pending": row.get::<_, i64>(1), "frames_table_bytes": row.get::<_, i64>(2), "resident_kib": resident_kib()?});
+            eprintln!("{sample}");
+            samples.push(sample);
+            next_sample = started.elapsed() + sample_interval;
+        }
+    }
+    let published: u64 = rounds.iter().map(|round| round["published_frames"].as_u64().unwrap()).sum();
+    Ok(
+        json!({"duration_seconds": started.elapsed().as_secs_f64(), "retention_ms": retention_ms, "published_frames": published,
+        "verified_deliveries": published * (settings.nodes as u64 - 1), "rounds": rounds, "samples": samples, "errors": 0}),
+    )
+}
+
+fn resident_kib() -> Result<u64, BenchError> {
+    let status = std::fs::read_to_string("/proc/self/status")?;
+    let value = status.lines().find_map(|line| line.strip_prefix("VmRSS:")).ok_or("VmRSSがありません")?;
+    Ok(value.split_whitespace().next().ok_or("VmRSSの値がありません")?.parse()?)
+}
+
+async fn measure_round(settings: &Settings, relays: &[Arc<dyn Relay>]) -> Result<serde_json::Value, BenchError> {
+    let packets: Vec<Vec<Frame>> = (0..settings.nodes).map(|node| frames(settings, node)).collect();
     let start = Arc::new(Barrier::new(settings.nodes * 2 + 1));
     let mut senders = JoinSet::new();
     let mut receivers = JoinSet::new();
@@ -178,7 +218,7 @@ async fn main() -> Result<(), BenchError> {
     let channel = format!("bench-{}", Uuid::new_v4());
     let (client, connection) = tokio_postgres::connect(&std::env::var(CONNECTION_ENV)?, NoTls).await?;
     let connection_task = tokio::spawn(connection);
-    let measured = tokio::time::timeout(CASE_DEADLINE, measure(&settings, &channel, &client)).await;
+    let measured = tokio::time::timeout(CASE_DEADLINE + Duration::from_secs(settings.duration_seconds), measure(&settings, &channel, &client)).await;
     let retained: i64 = client.query_one("SELECT count(*) FROM stegrdb_relay.frames WHERE channel=$1", &[&channel]).await?.get(0);
     let pending: i64 = client.query_one("SELECT count(*) FROM stegrdb_relay.pending WHERE channel=$1", &[&channel]).await?.get(0);
     // 例外時も、この測定が作ったchannelだけを掃除する。

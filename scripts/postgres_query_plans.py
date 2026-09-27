@@ -26,7 +26,7 @@ def compare_plans(sql, candidates):
     return plans
 
 
-def measure_receive(sql, source):
+def measure_receive(sql, sources):
     # 自動ANALYZEとの競合を避け、この診断中だけ試験テーブルを手動管理する。
     sql(f"""
         ALTER TABLE stegrdb_relay.frames SET (autovacuum_enabled=false);
@@ -40,20 +40,15 @@ def measure_receive(sql, source):
         INSERT INTO stegrdb_relay.pending
         SELECT channel,'receiver',id,position FROM stegrdb_relay.frames ORDER BY position DESC LIMIT 128;
     """)
-    current = query(source, "RECEIVE", ["'bench-receive'", "'receiver'", "128"])
-    lookup = """
-        SELECT frame.id,frame.payload FROM (
-            SELECT frame_id,position FROM stegrdb_relay.pending
-            WHERE channel='bench-receive' AND node_id='receiver' ORDER BY position LIMIT 128
-        ) AS delivery CROSS JOIN LATERAL (
-            SELECT id,payload FROM stegrdb_relay.frames
-            WHERE channel='bench-receive' AND id=delivery.frame_id OFFSET 0
-        ) AS frame ORDER BY delivery.position
-    """
-    received = sql(current).splitlines()
+    candidates = {name: query(source, "RECEIVE", ["'bench-receive'", "'receiver'", "128"]) for name, source in sources.items()}
+    # 受領情報の世代列が増えても、配送するUUID・本文・順序を比較する。
+    def frames(statement):
+        return [line.split("|")[:2] for line in sql(statement).splitlines()]
+
+    received = frames(candidates["current"])
     assert len(received) == 128, "受信SQLが期待した128件を返しません"
-    assert received == sql(lookup).splitlines(), "受信SQLの候補で結果が変わりました"
-    candidates = {"current": current, "bounded_lookup": lookup}
+    for statement in candidates.values():
+        assert received == frames(statement), "受信SQLの比較元と結果が変わりました"
     cold = compare_plans(sql, candidates)
     sql("ANALYZE stegrdb_relay.frames; ANALYZE stegrdb_relay.pending;")
     analyzed = compare_plans(sql, candidates)
@@ -61,7 +56,7 @@ def measure_receive(sql, source):
     return {"frames": RECEIVE_FRAMES, "pending": 128, "equivalent_output": True, "initial_statistics": cold, "updated_statistics": analyzed}
 
 
-def measure_replay(sql, source):
+def measure_replay(sql, sources):
     sql(f"""
         INSERT INTO stegrdb_relay.nodes VALUES ('bench-history','late');
         INSERT INTO stegrdb_relay.frames(channel,id,sender,payload,created_at)
@@ -70,11 +65,12 @@ def measure_replay(sql, source):
         FROM generate_series(1,{HISTORY_FRAMES}) AS value;
         ANALYZE stegrdb_relay.frames;
     """)
-    current = query(source, "REPLAY", ["'bench-history'", "'late'", "4000"])
-    candidates = {"current": current, "statement_timestamp": current.replace("clock_timestamp()", "statement_timestamp()")}
+    candidates = {name: query(source, "REPLAY", ["'bench-history'", "'late'", "4000"]) for name, source in sources.items()}
     return {"history_frames": HISTORY_FRAMES, "plans": compare_plans(sql, candidates)}
 
 
-def measure_query_plans(sql, root):
-    source = (root / "src/queries.rs").read_text()
-    return {"receive": measure_receive(sql, source), "replay": measure_replay(sql, source)}
+def measure_query_plans(sql, root, *, baseline=None):
+    sources = {"current": (root / "src/queries.rs").read_text()}
+    if baseline:
+        sources["baseline"] = baseline.read_text()
+    return {"receive": measure_receive(sql, sources), "replay": measure_replay(sql, sources)}

@@ -25,7 +25,7 @@ python3 scripts/bench-postgres.py \
 - 速度は「元の送信フレーム数 ÷ 全ノードのACK完了時間」。複数宛先への配送数は`verified_deliveries`に別記する。
 - バッチ送信のp50・p95・p99、ACK後にDBに残るフレーム数、未ACK数を保存する。保存フレーム数にはウォームアップを含む。
 
-各条件の後、検証用データを削除する。この削除時間は配送速度に含めない。今回のツールは本番DBの保持期限・掃除を実装するものではない。
+各条件の後、検証用データを削除する。この削除時間は配送速度に含めない。通常の比較では保持期限による自動削除を無効にする。
 
 ## 改善候補との比較
 
@@ -44,9 +44,23 @@ python3 scripts/bench-postgres.py \
 
 ```bash
 python3 scripts/bench-postgres.py --plans-only \
+  --baseline-queries /absolute/path/before/src/queries.rs \
   --output artifacts/postgres-bench/query-plans.json
 ```
 
-受信SQLは1万件のフレームと128件の未ACKで、統計更新前後の計画を比較する。初回再生SQLは25万件の古い履歴に対し、現行の`clock_timestamp()`と`statement_timestamp()`を使う候補を比較する。候補は測定時だけに使い、`src/queries.rs`を変更しない。
+受信SQLは1万件のフレームと128件の未ACKで、統計更新前後の計画を比較する。初回再生SQLは25万件の古い履歴で測定する。`--baseline-queries`には比較元の`src/queries.rs`を指定し、省略時は現行SQLだけを測る。比較元のファイルは`git show <revision>:src/queries.rs > before-queries.rs`で取得できる。配送するUUID・本文・順序の一致も確認する。
 
 `EXPLAIN ANALYZE`の結果には実行時間・走査件数・バッファ参照を保存する。実際の稼働中はパラメータ、prepared statementの計画、データ分布、統計の鮮度で計画が変わるため、この固定データでの結果だけで常時高速化を保証しない。
+
+初回再生の基準時刻にはSQL開始時刻で固定される`statement_timestamp()`を使う。[PostgreSQLの時刻関数](https://www.postgresql.org/docs/17/functions-datetime.html#FUNCTIONS-DATETIME-CURRENT)の違いに従い、インデックスで期間を絞れるようにしている。
+
+## 接続を維持した耐久試験
+
+```bash
+python3 scripts/bench-postgres.py --soak-seconds 300 --retention-ms 5000 \
+  --output artifacts/postgres-bench/soak.json
+```
+
+同じ測定プロセス内で3つのRelayとDB接続を維持し、1400バイト・バッチ128件の送受信を繰り返す。すべての内容とACKを照合し、約10秒ごとのRSS、残存フレーム数、未ACK数、表と索引の使用量を記録する。上の5秒保持は掃除を短時間で試験するための値で、本番の推奨保持期間ではない。`--retention-ms 0`では履歴を残したまま測る。耐久試験では掃除間隔を100ミリ秒にする。
+
+各ラウンドの速度と、生成・観測を含む全体時間を別に記録する。10秒のサンプルはラウンド完了後なので、負荷が高いと記録間隔は延びる。RSSには生成・照合用メモリを含み、DBの常駐メモリを含まない。5分の成功だけで日単位のメモリ安定性やDB容量上限は保証しない。

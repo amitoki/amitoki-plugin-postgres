@@ -7,9 +7,6 @@ CREATE TABLE IF NOT EXISTS stegrdb_relay.nodes (
     node_id TEXT NOT NULL,
     PRIMARY KEY (channel, node_id)
 );
--- 旧ノードの設定が不明な間は削除を無効にする。再接続時に各ノードが更新する。
-ALTER TABLE stegrdb_relay.nodes ADD COLUMN IF NOT EXISTS replay_window_ms BIGINT NOT NULL DEFAULT 2147483647;
-ALTER TABLE stegrdb_relay.nodes ADD COLUMN IF NOT EXISTS retention_ms BIGINT NOT NULL DEFAULT 0;
 
 CREATE TABLE IF NOT EXISTS stegrdb_relay.frames (
     channel TEXT NOT NULL,
@@ -32,20 +29,3 @@ CREATE TABLE IF NOT EXISTS stegrdb_relay.pending (
     FOREIGN KEY (channel, frame_id) REFERENCES stegrdb_relay.frames ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS pending_delivery_order ON stegrdb_relay.pending (channel, node_id, position);
--- node_idをまたぐ未ACK確認とframes削除時の外部キー検査に使う。
-CREATE INDEX IF NOT EXISTS pending_frame ON stegrdb_relay.pending (channel, frame_id);
-
--- 高頻度のINSERT/DELETEで古い行・統計が蓄積しないよう、中継表だけを調整する。
--- 末尾ページの縮小はACCESS EXCLUSIVEを取るため、オンラインでは領域の再利用を優先する。
-ALTER TABLE stegrdb_relay.pending SET (
-    autovacuum_vacuum_scale_factor = 0.02,
-    autovacuum_analyze_scale_factor = 0.02,
-    autovacuum_vacuum_cost_limit = 1000,
-    vacuum_truncate = false
-);
-ALTER TABLE stegrdb_relay.frames SET (
-    autovacuum_vacuum_scale_factor = 0.02,
-    autovacuum_analyze_scale_factor = 0.02,
-    autovacuum_vacuum_cost_limit = 1000,
-    vacuum_truncate = false
-);

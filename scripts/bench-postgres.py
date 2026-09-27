@@ -77,6 +77,20 @@ def save_report(destination, report):
     destination.write_text(json.dumps(report, indent=2) + "\n")
 
 
+def soak(container, settings):
+    port = command(["docker", "port", container, "5432/tcp"]).rsplit(":", 1)[1]
+    environment = dict(os.environ, AMITOKI_BENCH_POSTGRES_URL=f"host=127.0.0.1 port={port} user=postgres dbname=postgres sslmode=disable",
+                       AMITOKI_BENCH_RETENTION_MS=str(settings.retention_ms))
+    binary = settings.binary.resolve()
+    binary_sha256 = hashlib.sha256(binary.read_bytes()).hexdigest()
+    measured = subprocess.check_output([str(binary), "3", "128", "1400", "4096", str(settings.warmup_frames), str(settings.soak_seconds)],
+        text=True, env=environment, timeout=settings.soak_seconds + COMMAND_TIMEOUT_SECONDS)
+    measured = json.loads(measured)
+    assert measured["errors"] == 0 and measured["pending_after_ack"] == 0, measured
+    assert measured["verified_deliveries"] == 2 * measured["published_frames"], measured
+    return {"binary_sha256": binary_sha256, **measured}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", type=Path, default=ROOT / "target/release/examples/relay_bench")
@@ -84,11 +98,20 @@ def main():
     parser.add_argument("--repetitions", type=int, choices=range(1, 11), default=3)
     parser.add_argument("--warmup-frames", type=int, default=1024)
     parser.add_argument("--plans-only", action="store_true", help="受信と初回再生のSQLだけを比較する")
+    parser.add_argument("--baseline-queries", type=Path, help="比較元のsrc/queries.rs。指定時は現行SQLと結果/実行計画を比較する")
+    parser.add_argument("--soak-seconds", type=int, default=0, help="3ノード/1400B/batch128で接続を維持して耐久試験する（最大3600秒）")
+    parser.add_argument("--retention-ms", type=int, default=0, help="耐久試験で使う保持期間。0で削除無効")
     parser.add_argument("--image", default="postgres:17-alpine")
     parser.add_argument("--output", type=Path, required=True)
     settings = parser.parse_args()
     if not 0 <= settings.warmup_frames <= 10_000:
         parser.error("--warmup-framesは0〜10000件で指定してください")
+    if not 0 <= settings.soak_seconds <= 3600 or not 0 <= settings.retention_ms <= 2_147_483_647:
+        parser.error("耐久試験の秒数または保持期間が範囲外です")
+    if settings.soak_seconds and (settings.compare_binary or settings.plans_only):
+        parser.error("耐久試験と比較/SQLのみの測定は別々に実行してください")
+    if settings.retention_ms and not settings.soak_seconds:
+        parser.error("--retention-msは耐久試験で指定してください")
     settings.output.parent.mkdir(parents=True, exist_ok=True)
     report = {"started_at": datetime.now().astimezone().isoformat(), "status": "running", "cases": [],
               "host": {"machine": platform.machine(), "logical_cpus": os.cpu_count()},
@@ -102,10 +125,15 @@ def main():
         report["image"] = command(["docker", "inspect", "--format", "{{.Image}}", container])
         sql(container, (ROOT / "schema.sql").read_text() + "\nCREATE EXTENSION pg_stat_statements;")
         report["database"] = json.loads(sql(container, "SELECT json_build_object('version',version(),'fsync',current_setting('fsync'),"
-                                           "'synchronous_commit',current_setting('synchronous_commit'),'shared_buffers',current_setting('shared_buffers'))"))
-        if not settings.plans_only:
+                                           "'synchronous_commit',current_setting('synchronous_commit'),'shared_buffers',current_setting('shared_buffers'),"
+                                           "'autovacuum_naptime',current_setting('autovacuum_naptime'))"))
+        report["table_settings"] = json.loads(sql(container, "SELECT json_agg(json_build_object('table',relname,'options',reloptions)) "
+            "FROM pg_class WHERE relnamespace='stegrdb_relay'::regnamespace AND relkind='r'"))
+        if settings.soak_seconds:
+            report["soak"] = soak(container, settings)
+        elif not settings.plans_only:
             benchmark(container, settings, report=report, destination=settings.output)
-        report["query_plans"] = measure_query_plans(lambda statement: sql(container, statement), ROOT)
+        report["query_plans"] = measure_query_plans(lambda statement: sql(container, statement), ROOT, baseline=settings.baseline_queries)
         report["sql_statistics"] = json.loads(sql(container, "SELECT coalesce(json_agg(summary),'[]'::json) FROM "
             "(SELECT query,calls,total_exec_time,rows,shared_blks_hit,shared_blks_read,wal_bytes "
             "FROM pg_stat_statements ORDER BY total_exec_time DESC LIMIT 15) AS summary"))
